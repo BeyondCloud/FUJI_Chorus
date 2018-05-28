@@ -1,0 +1,19 @@
+1.test.cpp中寫好的function前面記得加上 extern "C"，否則在.py中會無法call 該 function。
+
+2.透過 cmd 產生.dll檔(需先安裝MinGW)：
+cd C:\Users\Albert\Downloads\python3 call C function
+g++ -Wall test.cpp -shared -m64 -o test.dll
+
+3.打開test.py執行可得"10"，藉由呼叫function>mydll.Add(4, 6)
+
+
+A.實作環境：win10 64bit, python3.6 64bits, MinGW 64bit
+
+B.安裝&測試套件 MinGW 教學：
+http://blog.jex.tw/blog/2013/12/17/windows-install-gcc-compiler-mingw/
+下載MinGW網址：https://sourceforge.net/projects/mingw-w64/
+
+C.設定系統環變數：
+安裝完後要將 GCC 的路徑 加到系統環境變數 PATH, 才能使用,
+我的電腦右鍵 -> 內容 -> 進階系統設定 -> 進階TAB, 點選在下面的環境變數 -> 在下面的系統變數那新增
+變數名稱 : PATH 變數值 : C:\Program Files\mingw-w64\x86_64-8.1.0-posix-seh-rt_v6-rev0\mingw64\bin
