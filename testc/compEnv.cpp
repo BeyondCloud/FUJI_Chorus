@@ -2,25 +2,30 @@
 #include <math.h>
 #include <algorithm>  // std::min_element, std::max_element
 #include <complex>
+#include <memory>
+#include <vector>
+
 using namespace std; 
 #define PI 3.1415926
-inline double* han2(int len);
-const double *han1024 = han2(1024);
-const double *han8 = han2(8);
+#define BUF_SIZE 8
+inline vector<double> han2(int len);
+const vector<double> buf_han = han2(BUF_SIZE);
 
-bool comp(int i, int j) { return i<j; }
-inline complex<double>* d2cpx(double x[],int len)
+inline vector<complex<double>> d2cpx(vector<double> x)
 {
-    complex<double> *X = new complex<double>[len];
+    const int len  = x.size();
+    
+    vector<complex<double>> X(len);
     for(int i=0;i<len;i++)
         X[i] ={x[i],0};
     return X;
 }
-inline complex<double>* fft(complex<double> x_cpx[],int len)
+inline vector<complex<double>> fft( vector<complex<double>> x_cpx)
 {
 
+    const int len =  x_cpx.size();
+    vector<complex<double>> X(len);
 
-    complex<double> *X = new complex<double>[len];
     double x[len*2];
     for(int i=0;i<len;i++)
     {
@@ -78,31 +83,33 @@ inline complex<double>* fft(complex<double> x_cpx[],int len)
         
     return X;
 }
-inline double* ifft(complex<double> x_cpx[],int xlen)
+inline vector<double> ifft(vector<complex<double>> x_cpx)
 {
-
+    const int xlen = x_cpx.size();
     //inner conjugate
-    double *x = new double[xlen];
+    vector<double> x(xlen);
     for(int i=1;i<xlen;i++)
         x_cpx[i] =conj(x_cpx[i]);
-    complex<double> *X = fft(x_cpx,xlen);
+    vector<complex<double>> X = fft(x_cpx);
 
     for(int i=0;i<xlen;i++)
         x[i] = real(X[i])/xlen;
     return x;
 }
 
-inline double* han2(int len)
+inline vector<double> han2(int len)
 {
-    double *w = new double[len];
+    vector<double> w(len);
     for(int i =0;i<len;i++)
         w[i] = pow(sin(PI*(i/float(len))),2);
     return w;
 }
 
-inline double* conv(double *x,double *y,int xlen,int ylen)
+inline vector<double> conv(vector<double> x,vector<double> y)
 {
-    double *x_out = new double[xlen];
+    const int xlen  = x.size();
+    const int ylen  = y.size();
+    vector<double> x_out(xlen);
     const int y_ini = floor(ylen/2);
     for(int i =0;i<xlen;i++)
     {
@@ -118,58 +125,62 @@ inline double* conv(double *x,double *y,int xlen,int ylen)
 
 }
 
-inline double* compEnv( complex<double> X[],int Xlen,int filLen)
+inline vector<double> compEnv( vector<complex<double>> X,int filLen)
 {
-    double X_abs[Xlen];
+    const int Xlen = X.size();
+    vector<double> X_abs(Xlen);
     for(int i =0;i<Xlen;i++)
         X_abs[i] = abs(X[i]);
-    double *win = han2(filLen);
-    double *env = conv(X_abs,win,Xlen,filLen);
-    const double *maxEnv = max_element(env,env+Xlen,comp);
-    const double *maxX = max_element(X_abs,X_abs+Xlen,comp);
+    vector<double> win = han2(filLen);
+    vector<double> env = conv(X_abs,win);
+    const double maxEnv = *max_element(begin(env), end(env));
+    const double maxX = *max_element(begin(X_abs), end(X_abs));
     
     for(int i =0;i<Xlen;i++)
     {
-        env[i] /= (maxEnv[0]*maxX[0]);
+        env[i] /= (maxEnv*maxX);
         env[i] = max(env[i],0.02);
     }
     return env;
 }
 
-inline double* formantPres(double *ori,double *pit,int xlen)
+inline vector<double> formantPres(vector<double> ori,vector<double> pit)
 {
     const int filLen = 24;
-    for(int i =0;i<xlen;i++)
-    {
-        ori[i] *= han8[i];
-        pit[i] *= han8[i];   
-    }
-
-    complex<double> *ORI = fft(d2cpx(ori,xlen),xlen);
-    complex<double> *PIT = fft(d2cpx(pit,xlen),xlen);
+    const int xlen = ori.size();
+    vector<complex<double>> ORI = fft(d2cpx(ori));
+    vector<complex<double>> PIT = fft(d2cpx(pit));
 
 
-    double *envO =  compEnv(ORI,xlen,filLen);
-    double *envP =  compEnv(PIT,xlen,filLen);
+    vector<double> envO =  compEnv(ORI,filLen);
+    vector<double> envP =  compEnv(PIT,filLen);
     
-    complex<double> fixed[xlen];
-    double *out = new double[xlen];
+    vector<complex<double>> fixed(xlen);
     for(int i =0;i<xlen;i++)
         fixed[i] = (ORI[i]/envO[i])*envP[i];
-    out = ifft(fixed,xlen);
+    vector<double> out  = ifft(fixed);
     return out;
 }
 
 int main() { 
-    double *win = han2(32);
+
+    cout<<"using buffer:"<<BUF_SIZE<<endl;
+    vector<double> win = han2(32);
     // for(int i =0;i<32;i++)
     //     cout<<win[i]<<" ";
     int x_len = 8;
     int y_len = 8;
-    double x[x_len] = {1,2,3,4,5,6,7,8};
-    double y[y_len] = {2,3,4,5,6,7,8,9};
-    double *x_out = conv(x,y,x_len,y_len);
-    double *ans = formantPres(x,y,x_len);
+    vector<double> x = {1,2,3,4,5,6,7,8};
+    vector<double> y = {2,3,4,5,6,7,8,9};
+    vector<double> x_out = conv(x,y);
+    //windowing
+    for(int i =0;i<x_len;i++)
+    {
+        x[i] *= buf_han[i];
+        y[i] *= buf_han[i];   
+    }
+
+    vector<double> ans = formantPres(x,y);
 
     for(int i =0;i<x_len;i++)
         cout<<ans[i]<<" ";
