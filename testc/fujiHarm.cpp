@@ -9,9 +9,15 @@
 
 using namespace std; 
 #define PI 3.1415926
-#define BUF_SIZE 8
+#define CHUNK 4096
 inline vector<double> han2(int len);
-const vector<double> buf_han = han2(BUF_SIZE);
+const vector<double> han_buf = han2(CHUNK);
+//global variable for OLA
+double frame1[CHUNK]={0};
+double prev_x[CHUNK/2]={0};
+double prev_han[CHUNK/2]={0};
+//end OLA variable
+
 inline vector<double> han2(int len)
 {
     vector<double> w(len);
@@ -38,6 +44,7 @@ inline vector<double> crossCorr(vector<double> x,vector<double> y,int winLen)
     }
     return out;
 }
+
 inline vector<double> wsola(const vector<double> x,double s)
 {
     const int xlen = x.size();
@@ -110,21 +117,217 @@ inline vector<double> wsola(const vector<double> x,double s)
         cout<<max_idx<<endl;
         del = tol - max_idx + 1;
     }
+
     for(int i = synPos[synPosLen-1];i<synPos[synPosLen-1]+winLen;i++)
-        yC[i] += x_pad[anaPos[synPosLen-2]+del+i-synPos[synPosLen-1]]*w[i-synPos[synPosLen-1]];
+        yC[i] += x_pad[anaPos[synPosLen-1]+del+i-synPos[synPosLen-1]]*w[i-synPos[synPosLen-1]];
     cout<<synPos[synPosLen-1]<<" "<<anaPos[synPosLen-2];
     for(int i = 0;i<yLen;i++)
         y[i] = yC[i+winLenHalf+1];
 
     return y;
 }
-extern "C" void fujiHarm(double *x,int xlen,double *out)
+inline vector<double> resamp(const vector<double> x,double s,int out_len)
 {
-    const double shift_note = 9.0;
-    const double s = pow(2.0,shift_note/12.0);
-    vector<double> x_vec(x, x + xlen);
+    vector<double> x_resamp(out_len);
+    for(double i =0;i<out_len;i++)
+    {
+        double interpx = i*s;
+        double xl = floor(interpx);
+        double dely = (xl<out_len-1)?(x[xl+1]-x[xl]):0;
+        x_resamp[i] = x[xl]+(interpx-xl)*dely;
+    }
+    return x_resamp;
 
-    vector<double> x_stretch= wsola(x_vec,s);
-    for(int i = 0;i<int(x_stretch.size());i++)
-        out[i] = x_stretch[i];
+}
+
+inline vector<complex<double>> d2cpx(vector<double> x)
+{
+    const int len  = x.size();
+    
+    vector<complex<double>> X(len);
+    for(int i=0;i<len;i++)
+        X[i] ={x[i],0};
+    return X;
+}
+inline vector<complex<double>> fft( vector<complex<double>> x_cpx)
+{
+
+    const int len =  x_cpx.size();
+    vector<complex<double>> X(len);
+
+    double x[len*2];
+    for(int i=0;i<len;i++)
+    {
+        x[i*2] =real(x_cpx[i]);
+        x[i*2+1] =imag(x_cpx[i]);
+    }
+
+    unsigned long n, mmax, m, j, istep, i;
+    double wtemp, wr, wpr, wpi, wi, theta;
+    double tempr, tempi;
+    // reverse-binary reindexing
+    n = len<<1;
+    j=1;
+    for (i=1; i<n; i+=2) {
+        if (j>i) {
+            swap(x[j-1], x[i-1]);
+            swap(x[j], x[i]);
+        }
+        m = len;
+        while (m>=2 && j>m) {
+            j -= m;
+            m >>= 1;
+        }
+        j += m;
+    };
+        // here begins the Danielson-Lanczos section
+    mmax=2;
+    while (n>mmax) {
+        istep = mmax<<1;
+        theta = -(2*PI/mmax);
+        wtemp = sin(0.5*theta);
+        wpr = -2.0*wtemp*wtemp;
+        wpi = sin(theta);
+        wr = 1.0;
+        wi = 0.0;
+        for (m=1; m < mmax; m += 2) {
+            for (i=m; i <= n; i += istep) {
+                j=i+mmax;
+                tempr = wr*x[j-1] - wi*x[j];
+                tempi = wr * x[j] + wi*x[j-1];
+ 
+                x[j-1] = x[i-1] - tempr;
+                x[j] = x[i] - tempi;
+                x[i-1] += tempr;
+                x[i] += tempi;
+            }
+            wtemp=wr;
+            wr += wr*wpr - wi*wpi;
+            wi += wi*wpr + wtemp*wpi;
+        }
+        mmax=istep;
+    }
+    for(int i=0;i<len;i++)
+        X[i] = {x[i*2],x[i*2+1]};
+        
+    return X;
+}
+inline vector<double> ifft(vector<complex<double>> x_cpx)
+{
+    const int xlen = x_cpx.size();
+    //inner conjugate
+    vector<double> x(xlen);
+    for(int i=1;i<xlen;i++)
+        x_cpx[i] =conj(x_cpx[i]);
+    vector<complex<double>> X = fft(x_cpx);
+
+    for(int i=0;i<xlen;i++)
+        x[i] = real(X[i])/xlen;
+    return x;
+}
+inline vector<double> conv(vector<double> x,vector<double> y)
+{
+    const int xlen  = x.size();
+    const int ylen  = y.size();
+    vector<double> x_out(xlen);
+    const int y_ini = floor(ylen/2);
+    for(int i =0;i<xlen;i++)
+    {
+        x_out[i] = 0;
+        for(int j = min(y_ini+i,ylen-1);j>=max(0,i-xlen+1+y_ini);j--)
+        {
+            x_out[i] += x[i+y_ini-j]*y[j];
+            // cout<<i+y_ini-j<<" "<<j<<",";
+        }
+        // cout<<endl;
+    }
+    return x_out;
+
+}
+inline vector<double> compEnv( vector<complex<double>> X,int filLen)
+{
+    const int Xlen = X.size();
+    vector<double> X_abs(Xlen);
+    for(int i =0;i<Xlen;i++)
+        X_abs[i] = abs(X[i]);
+    vector<double> win = han2(filLen);
+    vector<double> env = conv(X_abs,win);
+    const double maxEnv = *max_element(begin(env), end(env));
+    const double maxX = *max_element(begin(X_abs), end(X_abs));
+    
+    for(int i =0;i<Xlen;i++)
+    {
+        env[i] /= (maxEnv*maxX);
+        env[i] = max(env[i],0.02);
+    }
+    return env;
+}
+inline vector<double> formantPres(vector<double> ori,vector<double> pit)
+{
+    const int filLen = 24;
+    const int xlen = ori.size();
+    vector<complex<double>> ORI = fft(d2cpx(ori));
+    vector<complex<double>> PIT = fft(d2cpx(pit));
+
+
+    vector<double> envO =  compEnv(ORI,filLen);
+    vector<double> envP =  compEnv(PIT,filLen);
+    
+    vector<complex<double>> fixed(xlen);
+    for(int i =0;i<xlen;i++)
+        fixed[i] = (ORI[i]/envO[i])*envP[i];
+    vector<double> out  = ifft(fixed);
+    return out;
+}
+void fujiHarm(double *x,int xlen,double *out)
+{
+    const double shift_note = 4.0;
+    const double s = pow(2.0,shift_note/12.0);
+    
+    vector<double> x_vec(x, x + xlen);
+    //add 0.1 for better result 
+    vector<double> x_stretch= wsola(x_vec,s+0.1);
+
+    vector<double> x_resamp= resamp(x_stretch,s,xlen);
+    vector<double> x_pres = formantPres(x_vec,x_resamp);
+    // for(int i = 0;i<int(x_stretch.size());i++)
+    //     out[i] = x_stretch[i];
+    for(int i = 0;i<int(x_resamp.size());i++)
+        out[i] = x_resamp[i];
+    // for(int i = 0;i<int(x_pres.size());i++)
+    //     out[i] = x_pres[i];
+}
+extern "C" void ola(double *x,double *out)
+{
+    //prepare two frames for processing
+    for(int i =0;i<CHUNK/2;i++)
+    {
+        frame1[i] = prev_x[i];
+        prev_x[i] = x[i+CHUNK/2];
+    }
+    for(int i =CHUNK/2;i<CHUNK;i++)
+        frame1[i] = x[i-CHUNK/2];
+    //Start frame1,x process
+    fujiHarm(x,CHUNK,out);
+
+    //END frame1,x process
+
+
+    for(int i =0;i<CHUNK;i++) 
+        frame1[i] *= han_buf[i];
+    //OLA
+    for(int i =0;i<CHUNK/2;i++)
+    {
+        out[i] = frame1[i]+prev_han[i];
+
+    }
+    for(int i =0;i<CHUNK;i++) 
+        x[i] *= han_buf[i];
+
+    for(int i =CHUNK/2;i<CHUNK;i++)
+        out[i] =frame1[i]+x[i-CHUNK/2];
+
+    for(int i =0;i<CHUNK/2;i++) 
+        prev_han[i] = x[i+CHUNK/2];
+
 }
