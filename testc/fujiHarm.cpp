@@ -279,7 +279,7 @@ inline vector<double> formantPres(vector<double> ori,vector<double> pit)
     vector<double> out  = ifft(fixed);
     return out;
 }
-void fujiHarm(double *x,int xlen,double *out)
+void fujiHarm(double *x,int xlen)
 {
     const double shift_note = 4.0;
     const double s = pow(2.0,shift_note/12.0);
@@ -289,11 +289,12 @@ void fujiHarm(double *x,int xlen,double *out)
     vector<double> x_stretch= wsola(x_vec,s+0.1);
 
     vector<double> x_resamp= resamp(x_stretch,s,xlen);
-    vector<double> x_pres = formantPres(x_vec,x_resamp);
+    for(int i = 0;i<int(x_resamp.size());i++)
+        x[i] = x_resamp[i];
+    //vector<double> x_pres = formantPres(x_vec,x_resamp);
     // for(int i = 0;i<int(x_stretch.size());i++)
     //     out[i] = x_stretch[i];
-    for(int i = 0;i<int(x_resamp.size());i++)
-        out[i] = x_resamp[i];
+
     // for(int i = 0;i<int(x_pres.size());i++)
     //     out[i] = x_pres[i];
 }
@@ -308,7 +309,7 @@ extern "C" void ola(double *x,double *out)
     for(int i =CHUNK/2;i<CHUNK;i++)
         frame1[i] = x[i-CHUNK/2];
     //Start frame1,x process
-    fujiHarm(x,CHUNK,frame1);
+    fujiHarm(frame1,CHUNK);
 
     //END frame1,x process
 
