@@ -1,30 +1,23 @@
+//  g++ -Wall -std=c++11 fujiHarm.cpp -shared -m64 -o fujiHarm.dll
+
 #include <iostream> 
-#include <math.h> 
-#include <complex>
-#include <vector>
+#include <math.h>
 #include <algorithm>  // std::min_element, std::max_element
+#include <complex>
+#include <memory>
+#include <vector>
+
 using namespace std; 
 #define PI 3.1415926
+#define BUF_SIZE 8
+inline vector<double> han2(int len);
+const vector<double> buf_han = han2(BUF_SIZE);
 inline vector<double> han2(int len)
 {
     vector<double> w(len);
     for(int i =0;i<len;i++)
         w[i] = pow(sin(PI*(i/float(len))),2);
     return w;
-}
-
-inline vector<double> resamp(const vector<double> x,double s,int out_len)
-{
-    vector<double> x_resamp(out_len);
-    for(double i =0;i<out_len;i++)
-    {
-        double interpx = i*s;
-        double xl = floor(interpx);
-        double dely = (xl<out_len-1)?(x[xl+1]-x[xl]):0;
-        x_resamp[i] = x[xl]+(interpx-xl)*dely;
-    }
-    return x_resamp;
-
 }
 //fix y move x
 inline vector<double> crossCorr(vector<double> x,vector<double> y,int winLen)
@@ -105,7 +98,7 @@ inline vector<double> wsola(const vector<double> x,double s)
         vector<double> xNextAnaWinRan(winLen+tol*2);
         for(int j = next_ana_from;j<next_ana_to;j++)
             xNextAnaWinRan[j-next_ana_from] = x_pad[j];
-        cout<<xNextAnaWinRan[0]<<" "<<natProg[0]<<endl;
+
         vector<double> cc = crossCorr(xNextAnaWinRan,natProg,winLen);
         //argmax
         vector<double>::iterator maxit = max_element(cc.begin(), cc.end());
@@ -114,7 +107,7 @@ inline vector<double> wsola(const vector<double> x,double s)
         //     cout<<maxit[j]<<" ";
 
         // cout<<xNextAnaWinRan.size()<<""<<natProg.size()<<endl;
-        // cout<<max_idx<<endl;
+        cout<<max_idx<<endl;
         del = tol - max_idx + 1;
     }
     for(int i = synPos[synPosLen-1];i<synPos[synPosLen-1]+winLen;i++)
@@ -125,40 +118,13 @@ inline vector<double> wsola(const vector<double> x,double s)
 
     return y;
 }
-int main() { 
+extern "C" void fujiHarm(double *x,int xlen,double *out)
+{
+    const double shift_note = 9.0;
+    const double s = pow(2.0,shift_note/12.0);
+    vector<double> x_vec(x, x + xlen);
 
-    vector<double> x{1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0};
-    vector<double> y{1.0,2.0,3.0,4.0};
-
-    int winLen = 2;
-    //test window 
-    // const vector<double> w = han2(1024);
-    // for(int i=0;i<10;i++)
-    //      cout<<w[i]<<" ";
-
-
-    //test crossCorr
-    vector<double> ans = crossCorr(x,y,4); 
-    // for(int i=0;i<int(ans.size());i++)
-    //     cout<<ans[i]<<" ";
-    // return 0;
-
-    vector<double> v(4096);
-    const double s = 1.5;
-    // t = [1/4096:1/4096:1];
-    // x = sin(t*2*pi*40)';
-    for(double i=1;i<4097;i++)
-    {
-        v[i] = sin(2.0*PI*i*40.0/4096.0);
-    }
-    vector<double> ans_w = wsola(v,s); 
-    cout<<endl;
-    // for(int i=ans_w.size()-700;i<ans_w.size();i++)
-    //     cout<<ans_w[i]<<" ";
-    cout<<endl<<ans_w.size();
-    // cout<<endl;
-    // vector<double>::iterator maxit = max_element(y.begin(), y.end());
-    // int max_idx =distance(y.begin(), maxit);
-    // cout<<max_idx;
-    return 0; 
+    vector<double> x_stretch= wsola(x_vec,s);
+    for(int i = 0;i<int(x_stretch.size());i++)
+        out[i] = x_stretch[i];
 }
