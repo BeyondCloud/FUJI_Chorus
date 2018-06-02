@@ -133,7 +133,7 @@ inline vector<double> resamp(const vector<double> x,double s,int out_len)
     {
         double interpx = i*s;
         double xl = floor(interpx);
-        double dely = (xl<out_len-1)?(x[xl+1]-x[xl]):0;
+        double dely = (xl<(out_len-1))?(x[xl+1]-x[xl]):0;
         x_resamp[i] = x[xl]+(interpx-xl)*dely;
     }
     return x_resamp;
@@ -308,7 +308,7 @@ extern "C" void ola(double *x,double *out)
     for(int i =CHUNK/2;i<CHUNK;i++)
         frame1[i] = x[i-CHUNK/2];
     //Start frame1,x process
-    fujiHarm(x,CHUNK,out);
+    fujiHarm(x,CHUNK,frame1);
 
     //END frame1,x process
 
