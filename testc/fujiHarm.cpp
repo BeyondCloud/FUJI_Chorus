@@ -15,7 +15,7 @@ const vector<double> han_buf = han2(CHUNK);
 //global variable for OLA
 double frame1[CHUNK]={0};
 double prev_x[CHUNK/2]={0};
-double prev_han[CHUNK/2]={0};
+double prev_yhan[CHUNK/2]={0};
 //end OLA variable
 
 inline vector<double> han2(int len)
@@ -125,19 +125,6 @@ inline vector<double> wsola(const vector<double> x,double s)
         y[i] = yC[i+winLenHalf+1];
 
     return y;
-}
-inline vector<double> resamp(const vector<double> x,double s,int out_len)
-{
-    vector<double> x_resamp(out_len);
-    for(double i =0;i<out_len;i++)
-    {
-        double interpx = i*s;
-        double xl = floor(interpx);
-        double dely = (xl<(out_len-1))?(x[xl+1]-x[xl]):0;
-        x_resamp[i] = x[xl]+(interpx-xl)*dely;
-    }
-    return x_resamp;
-
 }
 
 inline vector<complex<double>> d2cpx(vector<double> x)
@@ -279,7 +266,21 @@ inline vector<double> formantPres(vector<double> ori,vector<double> pit)
     vector<double> out  = ifft(fixed);
     return out;
 }
-void fujiHarm(double *x,int xlen)
+inline vector<double> resamp(const vector<double> x,double s,int out_len)
+{
+    vector<double> x_resamp(out_len);
+    for(double i =0;i<out_len;i++)
+    {
+        double interpx = i*s;
+        double xl = floor(interpx);
+        double dely = (xl<(out_len-1))?(x[xl+1]-x[xl]):0;
+        x_resamp[i] = x[xl]+(interpx-xl)*dely;
+    }
+    return x_resamp;
+
+}
+
+inline vector<double> fujiHarm(double *x,int xlen)
 {
     const double shift_note = 4.0;
     const double s = pow(2.0,shift_note/12.0);
@@ -289,14 +290,15 @@ void fujiHarm(double *x,int xlen)
     vector<double> x_stretch= wsola(x_vec,s+0.1);
 
     vector<double> x_resamp= resamp(x_stretch,s,xlen);
-    for(int i = 0;i<int(x_resamp.size());i++)
-        x[i] = x_resamp[i];
+    return x_resamp;
+
     //vector<double> x_pres = formantPres(x_vec,x_resamp);
+    
     // for(int i = 0;i<int(x_stretch.size());i++)
-    //     out[i] = x_stretch[i];
+    //     x[i] = x_stretch[i];
 
     // for(int i = 0;i<int(x_pres.size());i++)
-    //     out[i] = x_pres[i];
+    //     x[i] = x_pres[i];
 }
 extern "C" void ola(double *x,double *out)
 {
@@ -308,27 +310,31 @@ extern "C" void ola(double *x,double *out)
     }
     for(int i =CHUNK/2;i<CHUNK;i++)
         frame1[i] = x[i-CHUNK/2];
-    //Start frame1,x process
-    fujiHarm(frame1,CHUNK);
 
+    //process two frames: take frame1 ,x as input 
+    // for(int i =0;i<CHUNK;i++)
+    // {
+    //     y1[i] = frame1*2.0;
+    //     y2[i] = x[i]*2.0; 
+    // }
+    vector<double> y1 = fujiHarm(frame1,CHUNK);
+    vector<double> y2 = fujiHarm(x,CHUNK);
+    
     //END frame1,x process
 
 
     for(int i =0;i<CHUNK;i++) 
-        frame1[i] *= han_buf[i];
+    {
+        y1[i] *= han_buf[i];
+        y2[i] *= han_buf[i];
+    }
     //OLA
     for(int i =0;i<CHUNK/2;i++)
-    {
-        out[i] = frame1[i]+prev_han[i];
-
-    }
-    for(int i =0;i<CHUNK;i++) 
-        x[i] *= han_buf[i];
-
+        out[i] = y1[i]+prev_yhan[i];
     for(int i =CHUNK/2;i<CHUNK;i++)
-        out[i] =frame1[i]+x[i-CHUNK/2];
+        out[i] = y1[i]+y2[i-CHUNK/2];
 
     for(int i =0;i<CHUNK/2;i++) 
-        prev_han[i] = x[i+CHUNK/2];
+        prev_yhan[i] = y2[i+CHUNK/2];
 
 }
