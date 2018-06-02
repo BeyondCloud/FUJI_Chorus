@@ -103,6 +103,8 @@ inline vector<double> wsola(const vector<double> x,double s)
         int next_ana_from = anaPos[i+1]-tol;
         int next_ana_to = anaPos[i+1]+winLen-tol;
         vector<double> xNextAnaWinRan(winLen);
+        for(int j = next_ana_from;j<next_ana_to;j++)
+            xNextAnaWinRan[j-next_ana_from] = x[j];
         vector<double> cc = crossCorr(xNextAnaWinRan,natProg,winLen);
         //argmax
         vector<double>::iterator maxit = max_element(cc.begin(), cc.end());
@@ -110,7 +112,8 @@ inline vector<double> wsola(const vector<double> x,double s)
         del = tol - max_idx + 1;
     }
     for(int i = synPos[synPosLen-1];i<synPos[synPosLen-1]+winLen;i++)
-        yC[i] += x_pad[anaPos[synPosLen-1]+del];
+        yC[i] += x_pad[anaPos[synPosLen-2]+del+i-synPos[synPosLen-1]]*w[i-synPos[synPosLen-1]];
+    cout<<synPos[synPosLen-1]<<" "<<anaPos[synPosLen-2];
     for(int i = 0;i<y.size();i++)
         y[i] = yC[i+winLenHalf+1];
     return y;
@@ -135,15 +138,16 @@ int main() {
 
     vector<double> v(4096);
     const double s = 1.5;
-    for(int i=1;i<4097;i++)
+    // t = [1/4096:1/4096:1];
+    // x = sin(t*2*pi*40)';
+    for(double i=1;i<4097;i++)
     {
-        v[i] = i;
+        v[i] = sin(2.0*PI*i*40.0/4096.0);
     }
     vector<double> ans_w = wsola(v,s); 
-    for(int i=0;i<ans_w.size();i++)
-    {
+    cout<<endl;
+    for(int i=ans_w.size()-700;i<ans_w.size();i++)
         cout<<ans_w[i]<<" ";
-    }
     cout<<endl<<ans_w.size();
     return 0; 
 }
