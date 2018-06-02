@@ -6,16 +6,18 @@
 #include <complex>
 #include <memory>
 #include <vector>
-
+#include <assert.h>   
 using namespace std; 
 #define PI 3.1415926
 #define CHUNK 4096
+#define DELAY_BUF_SIZE int(CHUNK*2.5)
+
 inline vector<double> han2(int len);
 const vector<double> han_buf = han2(CHUNK);
 //global variable for OLA
-double frame1[CHUNK]={0};
-double prev_x[CHUNK/2]={0};
 double prev_yhan[CHUNK/2]={0};
+double delay_buf[DELAY_BUF_SIZE]={0};
+
 //end OLA variable
 
 inline vector<double> han2(int len)
@@ -38,9 +40,7 @@ inline vector<double> crossCorr(vector<double> x,vector<double> y,int winLen)
         for(int j=max(0,i-xlen+1);j<=min(i,ylen-1);j++)
         {
             out[i-winLen+1]+=(y[j]*x[xlen-i+j-1]);
-         //   cout<<j<<" "<<xlen-i+j-1<<",";
         }
-       // cout<<endl;
     }
     return out;
 }
@@ -66,12 +66,7 @@ inline vector<double> wsola(const vector<double> x,double s)
         synPos[i] = i*synHop;
         anaPos[i] = winLenHalf + round(anaStep*i);
     }
-    for(int i =0;i<synPosLen;i++)
-        cout<<" "<<synPos[i];
-    cout<<endl;
-    for(int i =0;i<synPosLen;i++)
-        cout<<" "<<anaPos[i];
-    cout<<endl;
+
     for(int i =1;i<synPosLen;i++)
         anaHop[i] = anaPos[i]-anaPos[i-1];
 
@@ -81,10 +76,6 @@ inline vector<double> wsola(const vector<double> x,double s)
     int del = 0;
     for(int i = winLenHalf+tol;i<winLenHalf+tol+xlen;i++)
         x_pad[i-1] = x[i-winLenHalf-tol];
-
-    //test x_pad
-    // for(int i = winLenHalf+tol;i<winLenHalf+tol+10;i++)
-    //     cout<<i<<" "<<x_pad[i]<<endl; 
 
     //start wsola
     for(int i= 0;i<synPosLen-1;i++)
@@ -110,17 +101,12 @@ inline vector<double> wsola(const vector<double> x,double s)
         //argmax
         vector<double>::iterator maxit = max_element(cc.begin(), cc.end());
         int max_idx =distance(cc.begin(), maxit);
-        // for(int j = 0;j<300;j++)
-        //     cout<<maxit[j]<<" ";
 
-        // cout<<xNextAnaWinRan.size()<<""<<natProg.size()<<endl;
-        cout<<max_idx<<endl;
         del = tol - max_idx + 1;
     }
 
     for(int i = synPos[synPosLen-1];i<synPos[synPosLen-1]+winLen;i++)
         yC[i] += x_pad[anaPos[synPosLen-1]+del+i-synPos[synPosLen-1]]*w[i-synPos[synPosLen-1]];
-    cout<<synPos[synPosLen-1]<<" "<<anaPos[synPosLen-2];
     for(int i = 0;i<yLen;i++)
         y[i] = yC[i+winLenHalf+1];
 
@@ -222,11 +208,7 @@ inline vector<double> conv(vector<double> x,vector<double> y)
     {
         x_out[i] = 0;
         for(int j = min(y_ini+i,ylen-1);j>=max(0,i-xlen+1+y_ini);j--)
-        {
             x_out[i] += x[i+y_ini-j]*y[j];
-            // cout<<i+y_ini-j<<" "<<j<<",";
-        }
-        // cout<<endl;
     }
     return x_out;
 
@@ -279,17 +261,25 @@ inline vector<double> resamp(const vector<double> x,double s,int out_len)
     return x_resamp;
 
 }
-
-inline vector<double> fujiHarm(double *x,int xlen)
+inline vector<double> get_frame_from_delay_buf(int from,int to)
+{
+    assert(to>from);
+    to = max(to,0);
+    from = min(from,DELAY_BUF_SIZE);
+    vector<double> x( begin(delay_buf)+from, begin(delay_buf)+to);
+    return x;
+}
+inline vector<double> fujiHarm(const int ana_end)
 {
     const double shift_note = 4.0;
     const double s = pow(2.0,shift_note/12.0);
     
-    vector<double> x_vec(x, x + xlen);
+    vector<double> x= get_frame_from_delay_buf(ana_end-ceil(s*CHUNK),ana_end);
+    
     //add 0.1 for better result 
-    vector<double> x_stretch= wsola(x_vec,s+0.1);
-
-    vector<double> x_resamp= resamp(x_stretch,s,xlen);
+    // vector<double> x_stretch= wsola(x_vec,s+0.1);
+    // vector<double> x_vec(x, x + xlen);
+    vector<double> x_resamp= resamp(x,s,CHUNK);
     return x_resamp;
 
     //vector<double> x_pres = formantPres(x_vec,x_resamp);
@@ -300,26 +290,28 @@ inline vector<double> fujiHarm(double *x,int xlen)
     // for(int i = 0;i<int(x_pres.size());i++)
     //     x[i] = x_pres[i];
 }
+inline void update_delay_buf(double *x)
+{
+    for(int i =0;i<DELAY_BUF_SIZE-CHUNK;i++)
+        delay_buf[i] = delay_buf[i+CHUNK];
+    
+    for(int i =DELAY_BUF_SIZE-CHUNK;i<DELAY_BUF_SIZE;i++)
+        delay_buf[i] = x[i-(DELAY_BUF_SIZE-CHUNK)];
+
+}
 extern "C" void ola(double *x,double *out)
 {
+    
+    update_delay_buf(x);
     //prepare two frames for processing
-    for(int i =0;i<CHUNK/2;i++)
-    {
-        frame1[i] = prev_x[i];
-        prev_x[i] = x[i+CHUNK/2];
-    }
-    for(int i =CHUNK/2;i<CHUNK;i++)
-        frame1[i] = x[i-CHUNK/2];
 
     //process two frames: take frame1 ,x as input 
-    // for(int i =0;i<CHUNK;i++)
-    // {
-    //     y1[i] = frame1*2.0;
-    //     y2[i] = x[i]*2.0; 
-    // }
-    vector<double> y1 = fujiHarm(frame1,CHUNK);
-    vector<double> y2 = fujiHarm(x,CHUNK);
-    
+    vector<double> frame1 = get_frame_from_delay_buf(CHUNK,2*CHUNK);
+    for(int i =0;i<CHUNK;i++)
+        out[i] = frame1[i];
+    vector<double> y1 = fujiHarm(2*CHUNK);
+    vector<double> y2 = fujiHarm(DELAY_BUF_SIZE);
+
     //END frame1,x process
 
 
@@ -330,9 +322,9 @@ extern "C" void ola(double *x,double *out)
     }
     //OLA
     for(int i =0;i<CHUNK/2;i++)
-        out[i] = y1[i]+prev_yhan[i];
+        out[i] += y1[i]+prev_yhan[i];
     for(int i =CHUNK/2;i<CHUNK;i++)
-        out[i] = y1[i]+y2[i-CHUNK/2];
+        out[i] += y1[i]+y2[i-CHUNK/2];
 
     for(int i =0;i<CHUNK/2;i++) 
         prev_yhan[i] = y2[i+CHUNK/2];
