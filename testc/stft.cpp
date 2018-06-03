@@ -8,7 +8,16 @@ using namespace std;
 #define cpx complex<double>
 #define vcpx vector<cpx>
 #define vvcpx vector<vcpx>
-
+#define fs 22050
+inline vector<double> han(int len,int order);
+const vector<double> han1024 = han(1024,1);
+inline vector<double> han(int len,int order)
+{
+    vector<double> w(len);
+    for(int i =0;i<len;i++)
+        w[i] = pow(sin(PI*(i/float(len))),order);
+    return w;
+}
 inline vcpx fft( vcpx x_cpx)
 {
 
@@ -86,6 +95,7 @@ inline vector<double> ifft(vcpx x_cpx)
     return x;
 }
 
+
 inline vcpx d2cpx(vector<double> x)
 {
     const int len  = x.size();
@@ -94,49 +104,89 @@ inline vcpx d2cpx(vector<double> x)
         X[i] ={x[i],0};
     return X;
 }
-// inline vvcpx stft(double x[])
-// {   
-//     const int anaHop = 64;
-//     const int winLen = 1024;
-//     const int winLenHalf = round(winLen/2);
-//     // const int signalLength = x.size();
-//     // const int numOfFrames = floor((signalLength - winLen)/anaHop + 1);
-//     // double winPos[numOfFrames];
-    
-//     vvcpx A[2][2];
-//     A[0][0] = vcpx(3.0,3.0);
-//     return A;
-//     // for(int i = 0;i<numOfFrames;i++)
-//     //     winPos[i] = i*anaHop;
+inline vvcpx stft(vcpx x)
+{   
+    const int anaHop = 64;
+    const int winLen = 1024;
+    const int xlen = x.size();
+    const int winLenHalf = round(winLen/2);
+    const int fsAudio = fs;
+    const int signalLength = x.size();
+    const int numOfFrames = floor((anaHop+winLenHalf+xlen)/anaHop + 1);
 
-// }
 
-inline vvcpx foo(double x[])
-{
-    vvcpx vec(2, vcpx(2));
-    for(int i =0;i<2;i++)
+    double xPadded[winLen+anaHop+winLenHalf+xlen];
+    cout <<"pad:"<<winLen+anaHop+winLenHalf+xlen<<endl;
+    cout <<"numOfFrames:"<<numOfFrames<<endl;
+    int winPos[numOfFrames];
+    for(int i =0;i<numOfFrames;i++)
+        winPos[i] = i*anaHop;
+
+    // cout <<"winPos:";
+    // for(int i =0;i<numOfFrames;i++)
+    //     cout<<winPos[i]<<" ";
+    cout<<endl;
+
+    for(int i =0;i<xlen;i++)
+        xPadded[i+winLenHalf] = real(x[i]);
+    cout<<real(x[0]);
+    vvcpx spec(winLenHalf+1, vcpx(numOfFrames));
+    vcpx xi(winLen);
+    for(int i =0;i<numOfFrames;i++)
     {
-     for(int j =0;j<2;j++)
-        {
-            vec[i][j] = cpx(double(i), double(j));
-        }       
+
+        for(int j =0;j<winLen;j++)
+            xi[j]= cpx(xPadded[winPos[i]+j]* han1024[j],0);
+        vcpx Xi = fft(xi);
+        // if(i == 30)
+        // {
+        //     cout<<xPadded[winPos[i]];
+        //     for(int i =512;i<517;i++)
+        //         cout<<Xi[i]<<" ";
+        //     cout<<endl;
+        // }
+        for(int j =0;j<winLenHalf+1;j++)
+            spec[j][i] = Xi[i];
     }
-    return vec;
+    return spec;
+    // for(int i = 0;i<numOfFrames;i++)
+    //     winPos[i] = i*anaHop;
+
 }
+
+// inline vvcpx foo(v,x)
+// {
+//     vvcpx vec(3, vcpx(2));
+//     for(int i =0;i<2;i++)
+//     {
+//      for(int j =0;j<2;j++)
+//         {
+//             vec[i][j] = cpx(double(i), double(j));
+//         }       
+//     }
+//     cout<<"s:"<<vec.size()<<" "<<vec[0].size();
+
+//     return vec;
+// }
 int main() { 
 
     double mat[4] = {1,2,3,4};
+    vcpx v(4096);
+    for(double i=1;i<4097;i++)
+        v[i-1] = cpx(sin(2.0*PI*i*40.0/4096.0),0);
 
-    vvcpx vec(2, vcpx(2));
-    vec[0][0] =  cpx(1.2, 3.4);
-    cout<<vec[0][0]<<endl;
-    vvcpx v= foo(mat);
-    for(int i =0;i<2;i++)
-    {
-     for(int j =0;j<2;j++)
-        {
-            cout<<" "<<v[i][j];
-        }       
-    }
+    vvcpx spec= stft(v);
+
+    // vvcpx vec(2, vcpx(2));
+    // vec[0][0] =  cpx(1.2, 3.4);
+    // cout<<vec[0][0]<<endl;
+    
+    // for(int i =0;i<2;i++)
+    // {
+    //  for(int j =0;j<2;j++)
+    //     {
+    //         cout<<" "<<v[i][j];
+    //     }       
+    // }
     return 0; 
 }
