@@ -1,13 +1,20 @@
 #include <iostream> 
 #include <math.h> 
-#include <complex>
+#include <complex.h>
+#include <vector>
+
 using namespace std; 
 #define PI 3.1415926
-inline complex<double>* fft(complex<double> x_cpx[],int len)
+#define cpx complex<double>
+#define vcpx vector<cpx>
+#define vvcpx vector<vcpx>
+
+inline vcpx fft( vcpx x_cpx)
 {
 
+    const int len =  x_cpx.size();
+    vcpx X(len);
 
-    complex<double> *X = new complex<double>[len];
     double x[len*2];
     for(int i=0;i<len;i++)
     {
@@ -65,45 +72,71 @@ inline complex<double>* fft(complex<double> x_cpx[],int len)
         
     return X;
 }
-inline double* ifft(complex<double> x_cpx[],int len)
+inline vector<double> ifft(vcpx x_cpx)
 {
-
+    const int xlen = x_cpx.size();
     //inner conjugate
-    double *x = new double[len];
-    for(int i=1;i<len;i++)
+    vector<double> x(xlen);
+    for(int i=1;i<xlen;i++)
         x_cpx[i] =conj(x_cpx[i]);
-    complex<double> *X = fft(x_cpx,len);
+    vcpx X = fft(x_cpx);
 
-    for(int i=0;i<len;i++)
-        x[i] = real(X[i])/len;
+    for(int i=0;i<xlen;i++)
+        x[i] = real(X[i])/xlen;
     return x;
 }
-inline complex<double>* d2cpx(double x[],int len)
+
+inline vcpx d2cpx(vector<double> x)
 {
-    complex<double> *X = new complex<double>[len];
+    const int len  = x.size();
+    vcpx X(len);
     for(int i=0;i<len;i++)
         X[i] ={x[i],0};
     return X;
 }
+// inline vvcpx stft(double x[])
+// {   
+//     const int anaHop = 64;
+//     const int winLen = 1024;
+//     const int winLenHalf = round(winLen/2);
+//     // const int signalLength = x.size();
+//     // const int numOfFrames = floor((signalLength - winLen)/anaHop + 1);
+//     // double winPos[numOfFrames];
+    
+//     vvcpx A[2][2];
+//     A[0][0] = vcpx(3.0,3.0);
+//     return A;
+//     // for(int i = 0;i<numOfFrames;i++)
+//     //     winPos[i] = i*anaHop;
+
+// }
+
+inline vvcpx foo(double x[])
+{
+    vvcpx vec(2, vcpx(2));
+    for(int i =0;i<2;i++)
+    {
+     for(int j =0;j<2;j++)
+        {
+            vec[i][j] = cpx(double(i), double(j));
+        }       
+    }
+    return vec;
+}
 int main() { 
-    int len = 4;
 
-    double x[len] = {1,2,3,4};
-    // complex<double> x[len]={{1, 0},{2, 0},{3, 0},{4, 0}};
-    // double x_cpx[len*2] = {0};
-    // for(int i=0;i<len;i++)
-    //     x_cpx[i*2] = x[i];
-    complex<double> *x_cpx = d2cpx(x,len);
+    double mat[4] = {1,2,3,4};
 
-
-    complex<double> *X = fft(x_cpx,len);
-
-    // for(int i=0;i<4;i++)
-    //     cout<<real(X[i])<<endl;
-    cout<<X[0]/3.0;
-    double *out = ifft(X,len);
-    for(int i=0;i<len;i++)
-        cout<<out[i]<<endl;
-
+    vvcpx vec(2, vcpx(2));
+    vec[0][0] =  cpx(1.2, 3.4);
+    cout<<vec[0][0]<<endl;
+    vvcpx v= foo(mat);
+    for(int i =0;i<2;i++)
+    {
+     for(int j =0;j<2;j++)
+        {
+            cout<<" "<<v[i][j];
+        }       
+    }
     return 0; 
 }
