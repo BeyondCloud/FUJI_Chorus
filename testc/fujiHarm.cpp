@@ -12,19 +12,70 @@ using namespace std;
 #define CHUNK 4096
 #define DELAY_BUF_SIZE int(CHUNK*2.5)
 
-inline vector<double> han2(int len);
-const vector<double> han_buf = han2(CHUNK);
+#define cpx complex<double>
+#define vcpx vector<cpx>
+#define vvcpx vector<vcpx>
+#define fs 22050
+const double ow[CHUNK]={0};
+
+
+inline vvcpx stft(vcpx x);
+inline vector<double> han(int len,int order);
+
+const vector<double> han_buf = han(CHUNK,2);
+inline vector<double> istft(vvcpx spec);
 //global variable for OLA
+const vector<double> han1024 = han(1024,1);
 double prev_yhan[CHUNK/2]={0};
 double delay_buf[DELAY_BUF_SIZE]={0};
 
 //end OLA variable
+struct stftPar_t{
+    int anaHop;
+    int winLen;
+    int xlen;
+    int winLenHalf;
+    int fsAudio;
+    int signalLength;
+    int numOfFrames;
+    vector<int> winPos;
+    int numOfIter;
+    int origSigLen;
+    int sigLen;
+    vector<double> ow;
+    stftPar_t()
+    {
+        anaHop = 64;
+        winLen = 1024;
+        xlen = CHUNK;
+        winLenHalf = round(winLen/2);
+        fsAudio = fs;
+        signalLength = CHUNK;
+        numOfFrames = floor((anaHop+winLenHalf+xlen)/anaHop + 1);
+        winPos.resize(numOfFrames);
+        for(int i =0;i<numOfFrames;i++)
+            winPos[i] = i*anaHop;
+        ow.resize(CHUNK);
+        for(int i = 0 ;i<numOfFrames; i++)
+        {
+            for(int j = 0 ;j<winLen; j++)
+            {
+                int pos = winPos[i]+j-winLenHalf;
+                if(pos>=0 && pos<CHUNK)
+                  ow[pos] +=  pow(han1024[j],2);
+            }  
+        }
 
-inline vector<double> han2(int len)
+        numOfIter = 1;
+        origSigLen = CHUNK;
+        sigLen =  winPos[numOfFrames-1] +winLen -1;
+    }
+}stftPar; 
+inline vector<double> han(int len,int order)
 {
     vector<double> w(len);
     for(int i =0;i<len;i++)
-        w[i] = pow(sin(PI*(i/float(len))),2);
+        w[i] = pow(sin(PI*(i/float(len))),order);
     return w;
 }
 //fix y move x
@@ -52,7 +103,7 @@ inline vector<double> wsola(const vector<double> x,double s)
     const int winLen = 1024;
     const int winLenHalf = round(winLen/2);
     const int tol = 512;
-    const vector<double> w = han2(winLen);
+    const vector<double> w = han(winLen,2);
     const double yLen = ceil(s*xlen);
     const int synPosLen =(yLen+winLenHalf)/synHop;
     vector<double> y(yLen);
@@ -122,17 +173,19 @@ inline vector<complex<double>> d2cpx(vector<double> x)
         X[i] ={x[i],0};
     return X;
 }
-inline vector<complex<double>> fft( vector<complex<double>> x_cpx)
+
+inline vcpx fft( vcpx x_cpx)
 {
 
     const int len =  x_cpx.size();
-    vector<complex<double>> X(len);
+    vcpx X(len);
 
     double x[len*2];
     for(int i=0;i<len;i++)
     {
         x[i*2] =real(x_cpx[i]);
         x[i*2+1] =imag(x_cpx[i]);
+        // cout<<"r"<<x[i*2]<<" "<<x[i*2+1];
     }
 
     unsigned long n, mmax, m, j, istep, i;
@@ -155,6 +208,8 @@ inline vector<complex<double>> fft( vector<complex<double>> x_cpx)
     };
         // here begins the Danielson-Lanczos section
     mmax=2;
+
+
     while (n>mmax) {
         istep = mmax<<1;
         theta = -(2*PI/mmax);
@@ -163,6 +218,7 @@ inline vector<complex<double>> fft( vector<complex<double>> x_cpx)
         wpi = sin(theta);
         wr = 1.0;
         wi = 0.0;
+
         for (m=1; m < mmax; m += 2) {
             for (i=m; i <= n; i += istep) {
                 j=i+mmax;
@@ -173,6 +229,7 @@ inline vector<complex<double>> fft( vector<complex<double>> x_cpx)
                 x[j] = x[i] - tempi;
                 x[i-1] += tempr;
                 x[i] += tempi;
+               
             }
             wtemp=wr;
             wr += wr*wpr - wi*wpi;
@@ -181,18 +238,24 @@ inline vector<complex<double>> fft( vector<complex<double>> x_cpx)
         mmax=istep;
     }
     for(int i=0;i<len;i++)
-        X[i] = {x[i*2],x[i*2+1]};
+    {
+        X[i] = cpx(x[i*2],x[i*2+1]);
+    }
         
     return X;
 }
-inline vector<double> ifft(vector<complex<double>> x_cpx)
+inline vector<double> ifft(vcpx x_cpx)
 {
     const int xlen = x_cpx.size();
     //inner conjugate
     vector<double> x(xlen);
     for(int i=1;i<xlen;i++)
+    {
         x_cpx[i] =conj(x_cpx[i]);
-    vector<complex<double>> X = fft(x_cpx);
+
+
+    }
+    vcpx X = fft(x_cpx);
 
     for(int i=0;i<xlen;i++)
         x[i] = real(X[i])/xlen;
@@ -213,39 +276,45 @@ inline vector<double> conv(vector<double> x,vector<double> y)
     return x_out;
 
 }
-inline vector<double> compEnv( vector<complex<double>> X,int filLen)
+const vector<double> han24 = han(24,2);
+inline vector<vector<double>> compEnv( vvcpx X)
 {
-    const int Xlen = X.size();
-    vector<double> X_abs(Xlen);
-    for(int i =0;i<Xlen;i++)
-        X_abs[i] = abs(X[i]);
-    vector<double> win = han2(filLen);
-    vector<double> env = conv(X_abs,win);
-    const double maxEnv = *max_element(begin(env), end(env));
-    const double maxX = *max_element(begin(X_abs), end(X_abs));
-    
-    for(int i =0;i<Xlen;i++)
+    vector<vector<double>> env(stftPar.numOfFrames, vector<double>(stftPar.winLenHalf+1));
+    vector<double> X_abs(stftPar.winLenHalf+1);
+    for(int i =0;i<stftPar.numOfFrames;i++)
     {
-        env[i] /= (maxEnv*maxX);
-        env[i] = max(env[i],0.02);
+        for(int j =0;j<stftPar.winLenHalf+1;j++)
+            X_abs[j] = abs(X[i][j]);
+       
+        env[i] = conv(X_abs,han24);
+        const double maxEnv = *max_element(begin(env[i]), end(env[i]));
+        const double maxX = *max_element(begin(X_abs), end(X_abs));
+        
+        for(int j =0;j<stftPar.winLenHalf+1;j++)
+        {
+            env[i][j] /= (maxEnv*maxX);
+            env[i][j] = max(env[i][j],0.02);
+        } 
     }
+
     return env;
 }
-inline vector<double> formantPres(vector<double> ori,vector<double> pit)
+inline vector<double> formantPres(vector<double> pit,vector<double> ori)
 {
-    const int filLen = 24;
-    const int xlen = ori.size();
-    vector<complex<double>> ORI = fft(d2cpx(ori));
-    vector<complex<double>> PIT = fft(d2cpx(pit));
+    vvcpx ORI = stft(d2cpx(ori));
+    vvcpx PIT = stft(d2cpx(pit));
 
 
-    vector<double> envO =  compEnv(ORI,filLen);
-    vector<double> envP =  compEnv(PIT,filLen);
+    vector<vector<double>>  envO =  compEnv(ORI);
+    vector<vector<double>>  envP =  compEnv(PIT);
     
-    vector<complex<double>> fixed(xlen);
-    for(int i =0;i<xlen;i++)
-        fixed[i] = (ORI[i]/envO[i])*envP[i];
-    vector<double> out  = ifft(fixed);
+    for(int i =0;i<stftPar.numOfFrames;i++)
+    {
+        for(int j =0;j<stftPar.winLenHalf+1;j++)
+            PIT[i][j] = (PIT[i][j]/envP[i][j])*envO[i][j];
+    }
+
+    vector<double> out  = istft(PIT);
     return out;
 }
 inline vector<double> resamp(const vector<double> x,double s,int out_len)
@@ -261,6 +330,69 @@ inline vector<double> resamp(const vector<double> x,double s,int out_len)
     return x_resamp;
 
 }
+inline vvcpx stft(vcpx x)
+{   
+
+
+    vector<double> xPadded(stftPar.winLen+stftPar.anaHop+stftPar.winLenHalf+stftPar.xlen,0.0);
+
+
+    for(int i =0;i<stftPar.xlen;i++)
+        xPadded[i+stftPar.winLenHalf] = real(x[i]);
+
+
+    vvcpx spec(stftPar.numOfFrames, vcpx(stftPar.winLenHalf+1));
+    vcpx xi(stftPar.winLen);
+    for(int i =0;i<stftPar.numOfFrames;i++)
+    {
+
+        for(int j =0;j<stftPar.winLen;j++)
+            xi[j]= cpx(xPadded[stftPar.winPos[i]+j]* han1024[j],0);
+        vcpx Xi = fft(xi);
+
+
+        for(int j =0;j<stftPar.winLenHalf+1;j++)
+        {
+
+            spec[i][j] = Xi[j];
+            // cout<<Xi;
+        }
+
+    }
+
+
+    return spec;
+
+
+}
+inline vector<double> istft(vvcpx spec)
+{   
+    vector<double> out(stftPar.origSigLen,0.0);
+   //restore other side of spec
+    vvcpx X(stftPar.numOfFrames,vcpx(stftPar.winLen));
+
+    for(int i=0;i<stftPar.numOfFrames;i++)
+   {
+        for(int j=0;j<stftPar.winLenHalf+1;j++)
+            X[i][j] = spec[i][j];
+        for(int j=stftPar.winLenHalf+1;j<stftPar.winLen;j++)
+            X[i][j] = conj(spec[i][stftPar.winLen-j]);
+   }
+   for(int i=0;i<stftPar.numOfFrames;i++)
+   {
+        
+        vector<double> xi = ifft(X[i]);
+        for(int j=0;j<stftPar.winLen;j++)
+        {
+            int from = stftPar.winPos[i]+j;
+            if(from >=0 && from <stftPar.origSigLen)
+                out[from] += xi[j] * han1024[j];
+        }
+   }
+   for(int i=0;i<stftPar.origSigLen;i++)
+        out[i] /= stftPar.ow[i];
+    return out;
+}
 inline vector<double> get_frame_from_delay_buf(int from,int to)
 {
     assert(to>from);
@@ -275,15 +407,15 @@ inline vector<double> fujiHarm(const int ana_end)
     const double s = pow(2.0,shift_note/12.0);
     
     vector<double> x= get_frame_from_delay_buf(ana_end-ceil(s*CHUNK),ana_end);
-    
+    vector<double> x_ori= get_frame_from_delay_buf(ana_end-CHUNK,ana_end);
     //add 0.1 for better result 
     // vector<double> x_stretch= wsola(x_vec,s+0.1);
     // vector<double> x_vec(x, x + xlen);
     vector<double> x_resamp= resamp(x,s,CHUNK);
-    return x_resamp;
+    // return x_resamp;
+    vector<double> x_pres = formantPres(x_resamp,x_ori);
+    return x_pres;
 
-    //vector<double> x_pres = formantPres(x_vec,x_resamp);
-    
     // for(int i = 0;i<int(x_stretch.size());i++)
     //     x[i] = x_stretch[i];
 
@@ -308,7 +440,10 @@ extern "C" void ola(double *x,double *out)
     //process two frames: take frame1 ,x as input 
     vector<double> frame1 = get_frame_from_delay_buf(CHUNK,2*CHUNK);
     for(int i =0;i<CHUNK;i++)
-        out[i] = frame1[i];
+    {
+        //out[i] = frame1[i];
+        out[i] = 0;
+    }
     vector<double> y1 = fujiHarm(2*CHUNK);
     vector<double> y2 = fujiHarm(DELAY_BUF_SIZE);
 
