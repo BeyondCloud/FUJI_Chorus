@@ -2,7 +2,7 @@
 #include <math.h> 
 #include <complex.h>
 #include <vector>
-
+#include <algorithm>  // std::min_element, std::max_element
 using namespace std; 
 #define PI 3.1416
 #define cpx complex<double>
@@ -62,6 +62,7 @@ inline vector<double> han(int len,int order)
         w[i] = pow(sin(PI*(i/float(len))),order);
     return w;
 }
+
 inline vcpx fft( vcpx x_cpx)
 {
 
@@ -164,83 +165,53 @@ inline vvcpx stft(vcpx x)
 
 
     vector<double> xPadded(stftPar.winLen+stftPar.anaHop+stftPar.winLenHalf+stftPar.xlen,0.0);
-    cout <<"pad:"<<stftPar.winLen+stftPar.anaHop+stftPar.winLenHalf+stftPar.xlen<<endl;
-    cout <<"numOfFrames:"<<stftPar.numOfFrames<<endl;
-    // cout <<"winPos:";
-    // for(int i =0;i<numOfFrames;i++)
-    //     cout<<winPos[i]<<" ";
-    cout<<endl;
+
 
     for(int i =0;i<stftPar.xlen;i++)
         xPadded[i+stftPar.winLenHalf] = real(x[i]);
-    // cout<< xPadded[4604]<< " "<< xPadded[4605]<< " "<< xPadded[4606]<< " "<<endl;
-   
-    // for(int i =0;i<stftPar.xlen;i++)
-    //  cout<< x[i]<< " ";
-    
 
-    vvcpx spec(stftPar.numOfFrames, vcpx(stftPar.winLen));
+
+    vvcpx spec(stftPar.numOfFrames, vcpx(stftPar.winLenHalf+1));
     vcpx xi(stftPar.winLen);
     for(int i =0;i<stftPar.numOfFrames;i++)
     {
 
         for(int j =0;j<stftPar.winLen;j++)
-        {
             xi[j]= cpx(xPadded[stftPar.winPos[i]+j]* han1024[j],0);
-            if(isnan(real(xi[j])))
-            {
-                cout<<stftPar.winPos[i]+j<<" ";
-                cout<<xPadded[stftPar.winPos[i]+j]<<endl;
-                // cout<<real(xi[j])<<" ||"<<imag(xi[j]);
-            }
-            // if (stftPar.winPos[i]+j >stftPar.winLen+stftPar.anaHop+stftPar.winLenHalf+stftPar.xlen)
-            //     cout<<"errrr:";
-        }
         vcpx Xi = fft(xi);
-        // for(int j=0;j<10;j++)
-        //     cout<<Xi[j]<<" ";
 
-        // for(int j=0;j<10;j++)
-        //     cout<<xPadded[stftPar.winPos[i]+j]<<" ";
-        // cout<<endl;
-        // if(i == 30)
-        // {
-        //     cout<<xPadded[winPos[i]];
-        //     for(int i =512;i<517;i++)
-        //         cout<<Xi[i]<<" ";
-        //     cout<<endl;
-        // }
-        for(int j =0;j<stftPar.winLen;j++)
+
+        for(int j =0;j<stftPar.winLenHalf+1;j++)
         {
+
             spec[i][j] = Xi[j];
             // cout<<Xi;
         }
+
     }
 
-    // for(int i =0;i<stftPar.numOfFrames;i++)
-    // {
-    //     cout<<i<<":";
-    //     for(int j =0;j<10;j++)
-    //         cout<<real(spec[i][j])<<" ";
-    //     cout<<endl;
-    // }
+
     return spec;
-    // for(int i = 0;i<numOfFrames;i++)
-    //     winPos[i] = i*anaHop;
+
 
 }
 inline vector<double> istft(vvcpx spec)
 {   
     vector<double> out(stftPar.origSigLen,0.0);
+   //restore other side of spec
+    vvcpx X(stftPar.numOfFrames,vcpx(stftPar.winLen));
 
+    for(int i=0;i<stftPar.numOfFrames;i++)
+   {
+        for(int j=0;j<stftPar.winLenHalf+1;j++)
+            X[i][j] = spec[i][j];
+        for(int j=stftPar.winLenHalf+1;j<stftPar.winLen;j++)
+            X[i][j] = conj(spec[i][stftPar.winLen-j]);
+   }
    for(int i=0;i<stftPar.numOfFrames;i++)
    {
         
-        vector<double> xi = ifft(spec[i]);
-       // for(int j=500;j<520;j++)
-       //  {
-       //      cout <<xi[j]<<" ";
-       //  }
+        vector<double> xi = ifft(X[i]);
         for(int j=0;j<stftPar.winLen;j++)
         {
             int from = stftPar.winPos[i]+j;
@@ -252,55 +223,77 @@ inline vector<double> istft(vvcpx spec)
         out[i] /= stftPar.ow[i];
     return out;
 }
+inline vector<double> conv(vector<double> x,vector<double> y)
+{
+    const int xlen  = x.size();
+    const int ylen  = y.size();
+    vector<double> x_out(xlen);
+    const int y_ini = floor(ylen/2);
+    for(int i =0;i<xlen;i++)
+    {
+        x_out[i] = 0;
+        for(int j = min(y_ini+i,ylen-1);j>=max(0,i-xlen+1+y_ini);j--)
+            x_out[i] += x[i+y_ini-j]*y[j];
+    }
+    return x_out;
+
+}
+const vector<double> han24 = han(24,2);
+inline vector<vector<double>> compEnv( vvcpx X)
+{
+    vector<vector<double>> env(stftPar.numOfFrames, vector<double>(stftPar.winLenHalf+1));
+    vector<double> X_abs(stftPar.winLenHalf+1);
+    for(int i =0;i<stftPar.numOfFrames;i++)
+    {
+        for(int j =0;j<stftPar.winLenHalf+1;j++)
+            X_abs[j] = abs(X[i][j]);
+       
+        env[i] = conv(X_abs,han24);
+        const double maxEnv = *max_element(begin(env[i]), end(env[i]));
+        const double maxX = *max_element(begin(X_abs), end(X_abs));
+        
+        for(int j =0;j<stftPar.winLenHalf+1;j++)
+        {
+            env[i][j] /= (maxEnv*maxX);
+            env[i][j] = max(env[i][j],0.02);
+        } 
+    }
+
+    return env;
+}
+inline vector<double> formantPres(vector<double> pit,vector<double> ori)
+{
+    const int xlen = pit.size();
+    vvcpx ORI = stft(d2cpx(ori));
+    vvcpx PIT = stft(d2cpx(pit));
+
+
+    vector<vector<double>>  envO =  compEnv(ORI);
+    vector<vector<double>>  envP =  compEnv(PIT);
+    
+    for(int i =0;i<stftPar.numOfFrames;i++)
+    {
+        for(int j =0;j<stftPar.winLenHalf+1;j++)
+            PIT[i][j] = (PIT[i][j]/envP[i][j])*envO[i][j];
+    }
+
+    vector<double> out  = istft(PIT);
+    return out;
+}
 int main() { 
 
     vcpx v(4096);
+    vector<double> vd(4096);
+    
     for(double i=1.0;i<4097.0;i++)
     {
         v[i-1] = cpx(sin(2.0*PI*i*40.0/4096.0),0);
-        // cout<<v[i-1]<<" "<<i-1;
+        vd[i-1] = sin(2.0*PI*i*40.0/4096.0);
     }
-    // for(int i=0;i<1024;i++)
-    // {
-    //     if(isnan(real(v[i])))
-    //     {
-    //         cout<<v[i];
-    //         cout<<real(v[i])<<" ||"<<imag(v[i]);
-    //     }
-
-    //     // cout<<"r"<<x[i*2]<<" "<<x[i*2+1];
-    // }
-    // vcpx a= fft(v);
-    
-    // for(double i=38;i<45;i++)
-    //     cout<<abs(a[i])<<" ";
-    vvcpx spec= stft(v);
-    for(double i=38;i<45;i++)
-       cout<<abs(spec[0][i])<<" ";
-    vector<double> out  =istft(spec);
-    for(int i=0;i<4096;i++)
-        cout<<out[i]<<" ";
-
-
-
-
-    // cout<<"s size:";
-    // cout<<spec.size()<<" "<<spec[0].size();
-
-    // for(int i = CHUNK-1024;i<CHUNK; i++)
-    // {
-    //     cout<<stftPar.ow[i]<<" ";
-    // }
-    // vvcpx vec(2, vcpx(2));
-    // vec[0][0] =  cpx(1.2, 3.4);
-    // cout<<vec[0][0]<<endl;
-    
-    // for(int i =0;i<2;i++)
-    // {
-    //  for(int j =0;j<2;j++)
-    //     {
-    //         cout<<" "<<v[i][j];
-    //     }       
-    // }
+ 
+    vector<double> result  = formantPres(vd,vd);
+    for(int i=0;i<CHUNK;i++)
+        cout<<result[i]<<" ";
+   
     return 0; 
 }
