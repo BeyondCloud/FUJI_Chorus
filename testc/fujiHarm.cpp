@@ -40,8 +40,6 @@ struct stftPar_t{
     int numOfFrames;
     vector<int> winPos;
     int numOfIter;
-    int origSigLen;
-    int sigLen;
     vector<double> ow;
     stftPar_t()
     {
@@ -67,8 +65,6 @@ struct stftPar_t{
         }
 
         numOfIter = 1;
-        origSigLen = CHUNK;
-        sigLen =  winPos[numOfFrames-1] +winLen -1;
     }
 }stftPar; 
 inline vector<double> han(int len,int order)
@@ -292,7 +288,8 @@ inline vector<vector<double>> compEnv( vvcpx X)
         
         for(int j =0;j<stftPar.winLenHalf+1;j++)
         {
-            env[i][j] /= (maxEnv*maxX);
+            env[i][j] /= (maxEnv);
+            env[i][j] *= (maxX);
             env[i][j] = max(env[i][j],0.02);
         } 
     }
@@ -367,7 +364,7 @@ inline vvcpx stft(vcpx x)
 }
 inline vector<double> istft(vvcpx spec)
 {   
-    vector<double> out(stftPar.origSigLen,0.0);
+    vector<double> out(stftPar.xlen,0.0);
    //restore other side of spec
     vvcpx X(stftPar.numOfFrames,vcpx(stftPar.winLen));
 
@@ -385,11 +382,11 @@ inline vector<double> istft(vvcpx spec)
         for(int j=0;j<stftPar.winLen;j++)
         {
             int from = stftPar.winPos[i]+j;
-            if(from >=0 && from <stftPar.origSigLen)
+            if(from >=0 && from <stftPar.xlen)
                 out[from] += xi[j] * han1024[j];
         }
    }
-   for(int i=0;i<stftPar.origSigLen;i++)
+   for(int i=0;i<stftPar.xlen;i++)
         out[i] /= stftPar.ow[i];
     return out;
 }
@@ -411,6 +408,7 @@ inline vector<double> fujiHarm(const int ana_end)
     //add 0.1 for better result 
     // vector<double> x_stretch= wsola(x_vec,s+0.1);
     // vector<double> x_vec(x, x + xlen);
+    // return x_ori;
     vector<double> x_resamp= resamp(x,s,CHUNK);
     // return x_resamp;
     vector<double> x_pres = formantPres(x_resamp,x_ori);
@@ -441,8 +439,8 @@ extern "C" void ola(double *x,double *out)
     vector<double> frame1 = get_frame_from_delay_buf(CHUNK,2*CHUNK);
     for(int i =0;i<CHUNK;i++)
     {
-        //out[i] = frame1[i];
-        out[i] = 0;
+        out[i] = frame1[i];
+        // out[i] = 0;
     }
     vector<double> y1 = fujiHarm(2*CHUNK);
     vector<double> y2 = fujiHarm(DELAY_BUF_SIZE);
