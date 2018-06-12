@@ -1,4 +1,4 @@
-//  g++ -Wall -std=c++11 fujiHarm.cpp -shared -m64 -o fujiHarm.dll
+//  g++ -Wall -O3 -std=c++11 fujiHarm.cpp -shared -m64 -o fujiHarm.dll
 
 #include <iostream> 
 #include <math.h>
@@ -15,7 +15,7 @@ using namespace std;
 #define cpx complex<double>
 #define vcpx vector<cpx>
 #define vvcpx vector<vcpx>
-#define fs 22050
+#define fs 44100
 const double ow[CHUNK]={0};
 
 
