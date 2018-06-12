@@ -398,9 +398,8 @@ inline vector<double> get_frame_from_delay_buf(int from,int to)
     vector<double> x( begin(delay_buf)+from, begin(delay_buf)+to);
     return x;
 }
-inline vector<double> fujiHarm(const int ana_end)
+inline vector<double> fujiHarm(const int ana_end,const double shift_note )
 {
-    const double shift_note = 4.0;
     const double s = pow(2.0,shift_note/12.0);
     
     vector<double> x= get_frame_from_delay_buf(ana_end-ceil(s*CHUNK),ana_end);
@@ -429,6 +428,7 @@ inline void update_delay_buf(double *x)
         delay_buf[i] = x[i-(DELAY_BUF_SIZE-CHUNK)];
 
 }
+const vector<double> tone_tbl{4.0,7.0,12.0};
 extern "C" void ola(double *x,double *out)
 {
     
@@ -442,22 +442,30 @@ extern "C" void ola(double *x,double *out)
         out[i] = frame1[i];
         // out[i] = 0;
     }
-    vector<double> y1 = fujiHarm(2*CHUNK);
-    vector<double> y2 = fujiHarm(DELAY_BUF_SIZE);
-
-    //END frame1,x process
-
-
-    for(int i =0;i<CHUNK;i++) 
+    vector<double> y1(CHUNK,0);
+    vector<double> y2(CHUNK,0);
+    for(int i =0;i<int(tone_tbl.size());i++)
     {
-        y1[i] *= han_buf[i];
-        y2[i] *= han_buf[i];
+        vector<double> yt1 = fujiHarm(2*CHUNK,tone_tbl[i]);
+        vector<double> yt2 = fujiHarm(DELAY_BUF_SIZE,tone_tbl[i]);
+
+        //END frame1,x process
+
+
+        for(int j =0;j<CHUNK;j++) 
+        {
+            y1[j] += (yt1[j]*han_buf[j]);
+            y2[j] += (yt2[j]*han_buf[j]);
+        }
+
     }
     //OLA
     for(int i =0;i<CHUNK/2;i++)
         out[i] += y1[i]+prev_yhan[i];
+
     for(int i =CHUNK/2;i<CHUNK;i++)
         out[i] += y1[i]+y2[i-CHUNK/2];
+
 
     for(int i =0;i<CHUNK/2;i++) 
         prev_yhan[i] = y2[i+CHUNK/2];
