@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <math.h>
-
+//  g++ -Wall -O3 -std=c++11 test.cpp -shared -m64 -o chorus.dll
 #define PI 3.1416
 const double fs = 44100;
 const double delay_sec = 0.013;
@@ -11,7 +11,8 @@ const double mod_rate = 3.2;
 const double mod_arg = 2*3.1416*mod_rate/fs;
 const double feedback = 0.3;
 const int buf_len = delay_samples+depth_samples;
-extern "C" void chorus(const double *x,double *out,double *delay_buf,int len,double &prev_i)
+double prev_i = 0.0;
+extern "C" void chorus(const double *x,double *out,double *delay_buf,int len)
 {
     // printf("%d %lf",len,prev_i);
 
