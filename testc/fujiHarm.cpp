@@ -15,9 +15,9 @@ using namespace std;
 #define cpx complex<double>
 #define vcpx vector<cpx>
 #define vvcpx vector<vcpx>
-#define fs 44100
+#define fs 22050
 const double ow[CHUNK]={0};
-
+const double amplify = 3.0;
 
 inline vvcpx stft(vcpx x);
 inline vector<double> han(int len,int order);
@@ -428,8 +428,8 @@ inline void update_delay_buf(double *x)
         delay_buf[i] = x[i-(DELAY_BUF_SIZE-CHUNK)];
 
 }
-const vector<double> tone_tbl{4.0,7.0,12.0};
-extern "C" void ola(double *x,double *out)
+// const vector<double> tone_tbl{4.0,7.0,11.0};
+extern "C" void ola(double *x,double *out,double *tone_tbl)
 {
     
     update_delay_buf(x);
@@ -439,24 +439,29 @@ extern "C" void ola(double *x,double *out)
     vector<double> frame1 = get_frame_from_delay_buf(CHUNK,2*CHUNK);
     for(int i =0;i<CHUNK;i++)
     {
-        out[i] = frame1[i];
-        // out[i] = 0;
+
+        out[i] = amplify*frame1[i]; //add dry data
+
+        //out[i] = 0; //bypass dry data
     }
     vector<double> y1(CHUNK,0);
     vector<double> y2(CHUNK,0);
-    for(int i =0;i<int(tone_tbl.size());i++)
+
+    for(int i =0;i<3;i++)
     {
-        vector<double> yt1 = fujiHarm(2*CHUNK,tone_tbl[i]);
-        vector<double> yt2 = fujiHarm(DELAY_BUF_SIZE,tone_tbl[i]);
-
-        //END frame1,x process
-
-
-        for(int j =0;j<CHUNK;j++) 
+        if(tone_tbl[i] != -1.0)
         {
-            y1[j] += (yt1[j]*han_buf[j]);
-            y2[j] += (yt2[j]*han_buf[j]);
+            vector<double> yt1 = fujiHarm(2*CHUNK,tone_tbl[i]);
+            vector<double> yt2 = fujiHarm(DELAY_BUF_SIZE,tone_tbl[i]);
+
+            //END frame1,x process
+            for(int j =0;j<CHUNK;j++) 
+            {
+                y1[j] += amplify*(yt1[j]*han_buf[j]);
+                y2[j] += amplify*(yt2[j]*han_buf[j]);
+            }
         }
+
 
     }
     //OLA
