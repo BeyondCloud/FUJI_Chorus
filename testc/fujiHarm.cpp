@@ -1,4 +1,4 @@
-//  g++ -Wall -O3 -std=c++11 fujiHarm.cpp -shared -m64 -o fujiHarm.dll
+//  g++ -Wall -O3 -std=c++11 fujiHarm.cpp -shared -m64 -o fujiHarmN.dll
 
 #include <iostream> 
 #include <math.h>
@@ -17,7 +17,6 @@ using namespace std;
 #define vvcpx vector<vcpx>
 #define fs 22050
 const double ow[CHUNK]={0};
-const double amplify = 3.0;
 
 inline vvcpx stft(vcpx x);
 inline vector<double> han(int len,int order);
@@ -413,6 +412,7 @@ inline vector<double> fujiHarm(const int ana_end,const double shift_note )
     vector<double> x_pres = formantPres(x_resamp,x_ori);
     return x_pres;
 
+
     // for(int i = 0;i<int(x_stretch.size());i++)
     //     x[i] = x_stretch[i];
 
@@ -440,13 +440,13 @@ extern "C" void ola(double *x,double *out,double *tone_tbl)
     for(int i =0;i<CHUNK;i++)
     {
 
-        out[i] = amplify*frame1[i]; //add dry data
+        out[i] = frame1[i]; //add dry data
 
         //out[i] = 0; //bypass dry data
     }
     vector<double> y1(CHUNK,0);
     vector<double> y2(CHUNK,0);
-
+    int cnt = 1;
     for(int i =0;i<3;i++)
     {
         if(tone_tbl[i] != -1.0)
@@ -457,11 +457,11 @@ extern "C" void ola(double *x,double *out,double *tone_tbl)
             //END frame1,x process
             for(int j =0;j<CHUNK;j++) 
             {
-                y1[j] += amplify*(yt1[j]*han_buf[j]);
-                y2[j] += amplify*(yt2[j]*han_buf[j]);
+                y1[j] += (yt1[j]*han_buf[j]);
+                y2[j] += (yt2[j]*han_buf[j]);
             }
+            cnt++;
         }
-
 
     }
     //OLA
@@ -471,6 +471,8 @@ extern "C" void ola(double *x,double *out,double *tone_tbl)
     for(int i =CHUNK/2;i<CHUNK;i++)
         out[i] += y1[i]+y2[i-CHUNK/2];
 
+    for(int i =0;i<CHUNK;i++)
+        out[i] /= cnt;
 
     for(int i =0;i<CHUNK/2;i++) 
         prev_yhan[i] = y2[i+CHUNK/2];
